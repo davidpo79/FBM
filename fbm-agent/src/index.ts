@@ -317,13 +317,14 @@ async function main(): Promise<void> {
       printFileSaved(filePath);
 
       // הצג את 3 הנישות
-      console.log(chalk.cyan.bold("\n  3 הנישות שנמצאו:\n"));
+      console.log(chalk.cyan.bold("\n  🎯 3 הנישות שנמצאו:\n"));
       nichesResult.niches.forEach((niche, idx) => {
         console.log(
           chalk.white.bold(`  ${idx + 1}. ${niche.name}`) +
             chalk.yellow(` (ציון התאמה: ${niche.fit_score}/10)`)
         );
         console.log(chalk.gray(`     ${niche.description}`));
+        console.log(chalk.magenta(`     למה מתאים: ${niche.why_perfect_match}`));
         console.log();
       });
 
@@ -338,7 +339,7 @@ async function main(): Promise<void> {
           name: "selectedIndex",
           message: chalk.white.bold("באיזו נישה תרצה להתמקד?"),
           choices: nichesResult.niches.map((niche, idx) => ({
-            name: `${niche.name} (ציון: ${niche.fit_score})`,
+            name: `${niche.name} (ציון: ${niche.fit_score}/10) - ${niche.why_perfect_match.slice(0, 60)}...`,
             value: idx,
           })),
         },
