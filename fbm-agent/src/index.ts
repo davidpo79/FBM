@@ -39,36 +39,32 @@ interface Progress {
 }
 
 // ═══════════════════════════════════════════
-// Helpers
+// Helper Functions
 // ═══════════════════════════════════════════
 
-function printStepHeader(step: number, title: string): void {
-  console.log("\n");
-  console.log(
-    chalk.yellow("┌─────────────────────────────────────────────────┐")
-  );
-  console.log(
-    chalk.yellow("│") +
-      chalk.white.bold(`  שלב ${step}/5: ${title}`.padEnd(48)) +
-      chalk.yellow("│")
-  );
-  console.log(
-    chalk.yellow("└─────────────────────────────────────────────────┘")
-  );
-  console.log();
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9\u0590-\u05FF_-]/g, "_");
 }
 
-function printSuccess(message: string): void {
-  console.log(chalk.green.bold(`  ✓ ${message}`));
+function parseJSONFromText(text: string): NichesResult {
+  // נסה לפרסר ישירות
+  try {
+    return JSON.parse(text);
+  } catch {
+    // נסה לחלץ JSON מתוך טקסט (אם Claude הוסיף ```json או טקסט מסביב)
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("לא הצלחתי לחלץ JSON מתגובת Claude. נסה שוב.");
+    }
+    return JSON.parse(jsonMatch[0]);
+  }
 }
 
-function printFileSaved(filePath: string): void {
-  console.log(chalk.gray(`  📄 נשמר: ${filePath}`));
-}
-
-function printError(step: number, error: unknown): void {
-  const msg = error instanceof Error ? error.message : String(error);
-  console.log(chalk.red.bold(`\n  ✗ שגיאה בשלב ${step}: ${msg}`));
+function showPreview(text: string, maxLength: number = 500): void {
+  const preview = text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
+  console.log(chalk.gray("\n  ── תצוגה מקדימה ──"));
+  console.log(chalk.white(`  ${preview.split("\n").join("\n  ")}`));
+  console.log(chalk.gray("  ── סוף תצוגה מקדימה ──\n"));
 }
 
 function ensureDir(dir: string): void {
@@ -97,181 +93,23 @@ function loadProgress(outputDir: string): Progress | null {
   return null;
 }
 
-function printPreview(text: string, maxChars: number = 500): void {
-  const preview = text.length > maxChars ? text.slice(0, maxChars) + "..." : text;
-  console.log(chalk.gray("\n  ── תצוגה מקדימה ──"));
-  console.log(chalk.white(`  ${preview.split("\n").join("\n  ")}`));
-  console.log(chalk.gray("  ── סוף תצוגה מקדימה ──\n"));
+function printStepHeader(step: number, title: string): void {
+  console.log("\n");
+  console.log(chalk.yellow(`  ┌─── שלב ${step}/5: ${title} ───┐`));
+  console.log();
 }
 
-// ═══════════════════════════════════════════
-// Steps
-// ═══════════════════════════════════════════
-
-async function step1Questionnaire(outputDir: string): Promise<QuestionnaireAnswers> {
-  printStepHeader(1, "שאלון תדר");
-
-  const collector = new QuestionnaireCollector();
-  const answers = await collector.collect();
-
-  const filePath = path.join(outputDir, "questionnaire.json");
-  saveFile(filePath, JSON.stringify(answers, null, 2));
-  printSuccess("השאלון הושלם בהצלחה!");
-  printFileSaved(filePath);
-
-  return answers;
+function printSuccess(fileName: string): void {
+  console.log(chalk.green.bold(`  ✅ ${fileName} נוצר!`));
 }
 
-async function step2Strategy(
-  outputDir: string,
-  answers: QuestionnaireAnswers,
-  claude: ClaudeClient
-): Promise<string> {
-  printStepHeader(2, "בניית מסמך אסטרטגיה ותדר");
-
-  const prompt = buildStrategyPrompt(answers);
-  const spinner = ora({
-    text: chalk.cyan("  Claude בונה את מסמך האסטרטגיה שלך..."),
-    spinner: "dots",
-  }).start();
-
-  const strategyDoc = await claude.generateText(prompt, STRATEGY_SYSTEM_PROMPT);
-  spinner.stop();
-
-  const filePath = path.join(outputDir, "strategy.txt");
-  saveFile(filePath, strategyDoc);
-  printSuccess("מסמך האסטרטגיה נוצר בהצלחה!");
-  printFileSaved(filePath);
-  printPreview(strategyDoc);
-
-  return strategyDoc;
+function printFileSaved(filePath: string): void {
+  console.log(chalk.gray(`  📄 נשמר: ${filePath}`));
 }
 
-async function step3Niches(
-  outputDir: string,
-  strategyDoc: string,
-  claude: ClaudeClient
-): Promise<Niche> {
-  printStepHeader(3, "מציאת 3 נישות מותאמות");
-
-  const prompt = buildNichesPrompt(strategyDoc);
-  const spinner = ora({
-    text: chalk.cyan("  Claude מנתח את התדר שלך ומחפש נישות מושלמות..."),
-    spinner: "dots",
-  }).start();
-
-  const rawResponse = await claude.generateText(prompt, NICHES_SYSTEM_PROMPT);
-  spinner.stop();
-
-  // פרסור JSON - חילוץ מתוך התגובה
-  let nichesResult: NichesResult;
-  try {
-    // נסה לפרסר ישירות
-    nichesResult = JSON.parse(rawResponse);
-  } catch {
-    // נסה לחלץ JSON מתוך הטקסט
-    const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("לא הצלחתי לחלץ JSON מתגובת Claude. נסה שוב.");
-    }
-    nichesResult = JSON.parse(jsonMatch[0]);
-  }
-
-  // שמור את כל הנישות
-  const filePath = path.join(outputDir, "niches.json");
-  saveFile(filePath, JSON.stringify(nichesResult, null, 2));
-  printFileSaved(filePath);
-
-  // הצג את 3 הנישות
-  console.log(chalk.cyan.bold("\n  3 הנישות שנמצאו:\n"));
-  nichesResult.niches.forEach((niche, idx) => {
-    console.log(
-      chalk.white.bold(`  ${idx + 1}. ${niche.name}`) +
-        chalk.yellow(` (ציון התאמה: ${niche.fit_score}/10)`)
-    );
-    console.log(chalk.gray(`     ${niche.description}`));
-    console.log();
-  });
-
-  if (nichesResult.recommendation) {
-    console.log(chalk.magenta(`  💡 המלצה: ${nichesResult.recommendation}\n`));
-  }
-
-  // בחירת נישה
-  const { selectedIndex } = await inquirer.prompt<{ selectedIndex: number }>([
-    {
-      type: "list",
-      name: "selectedIndex",
-      message: chalk.white.bold("באיזו נישה תרצה להתמקד?"),
-      choices: nichesResult.niches.map((niche, idx) => ({
-        name: `${niche.name} (ציון: ${niche.fit_score})`,
-        value: idx,
-      })),
-    },
-  ]);
-
-  const selectedNiche = nichesResult.niches[selectedIndex];
-  printSuccess(`נבחרה נישה: ${selectedNiche.name}`);
-
-  // עדכן את הקובץ עם הבחירה
-  const nichesWithSelection = { ...nichesResult, selectedNicheName: selectedNiche.name };
-  saveFile(filePath, JSON.stringify(nichesWithSelection, null, 2));
-
-  return selectedNiche;
-}
-
-async function step4Pains(
-  outputDir: string,
-  strategyDoc: string,
-  selectedNiche: Niche,
-  claude: ClaudeClient
-): Promise<string> {
-  printStepHeader(4, "ניתוח כאבים עמוקים");
-
-  console.log(chalk.gray(`  מנתח כאבים עבור נישה: ${selectedNiche.name}\n`));
-
-  const prompt = buildPainsPrompt(strategyDoc, selectedNiche);
-  const spinner = ora({
-    text: chalk.cyan("  Claude חופר לעומק הכאבים של הנישה..."),
-    spinner: "dots",
-  }).start();
-
-  const painAnalysis = await claude.generateText(prompt, PAINS_SYSTEM_PROMPT);
-  spinner.stop();
-
-  const filePath = path.join(outputDir, "pains.txt");
-  saveFile(filePath, painAnalysis);
-  printSuccess("ניתוח הכאבים הושלם!");
-  printFileSaved(filePath);
-  printPreview(painAnalysis);
-
-  return painAnalysis;
-}
-
-async function step5Scripts(
-  outputDir: string,
-  strategyDoc: string,
-  painAnalysis: string,
-  claude: ClaudeClient
-): Promise<string> {
-  printStepHeader(5, "יצירת 3 תסריטי וידאו");
-
-  const prompt = buildScriptsPrompt(strategyDoc, painAnalysis);
-  const spinner = ora({
-    text: chalk.cyan("  Claude כותב 3 תסריטי וידאו מותאמים אישית..."),
-    spinner: "dots",
-  }).start();
-
-  const scripts = await claude.generateText(prompt, SCRIPTS_SYSTEM_PROMPT);
-  spinner.stop();
-
-  const filePath = path.join(outputDir, "scripts.txt");
-  saveFile(filePath, scripts);
-  printSuccess("3 תסריטי הוידאו נוצרו בהצלחה!");
-  printFileSaved(filePath);
-  printPreview(scripts);
-
-  return scripts;
+function printError(step: number, error: unknown): void {
+  const msg = error instanceof Error ? error.message : String(error);
+  console.log(chalk.red.bold(`\n  ❌ שגיאה בשלב ${step}: ${msg}`));
 }
 
 // ═══════════════════════════════════════════
@@ -279,6 +117,7 @@ async function step5Scripts(
 // ═══════════════════════════════════════════
 
 async function main(): Promise<void> {
+  // ── כותרת FBM Agent ──
   console.log("\n");
   console.log(
     chalk.cyan.bold("  ╔══════════════════════════════════════════════════╗")
@@ -314,59 +153,59 @@ async function main(): Promise<void> {
   let painAnalysis = "";
 
   // חפש תיקיות קיימות עם progress
-  if (fs.existsSync(outputsBase)) {
-    const dirs = fs
-      .readdirSync(outputsBase)
-      .filter((d) =>
-        fs.existsSync(path.join(outputsBase, d, "progress.json"))
-      );
+  const dirs = fs.existsSync(outputsBase)
+    ? fs
+        .readdirSync(outputsBase)
+        .filter((d) =>
+          fs.existsSync(path.join(outputsBase, d, "progress.json"))
+        )
+    : [];
 
-    if (dirs.length > 0) {
-      const { resume } = await inquirer.prompt<{ resume: string }>([
-        {
-          type: "list",
-          name: "resume",
-          message: chalk.white.bold("נמצא תהליך קודם. מה תרצה לעשות?"),
-          choices: [
-            ...dirs.map((d) => {
-              const prog = loadProgress(path.join(outputsBase, d));
-              const completed = prog?.completedSteps.length ?? 0;
-              return {
-                name: `המשך עם ${d} (${completed}/5 שלבים הושלמו)`,
-                value: d,
-              };
-            }),
-            { name: "התחל תהליך חדש", value: "__new__" },
-          ],
-        },
-      ]);
+  if (dirs.length > 0) {
+    const { resume } = await inquirer.prompt<{ resume: string }>([
+      {
+        type: "list",
+        name: "resume",
+        message: chalk.white.bold("נמצא תהליך קודם. מה תרצה לעשות?"),
+        choices: [
+          ...dirs.map((d) => {
+            const prog = loadProgress(path.join(outputsBase, d));
+            const completed = prog?.completedSteps.length ?? 0;
+            return {
+              name: `המשך עם ${d} (${completed}/5 שלבים הושלמו)`,
+              value: d,
+            };
+          }),
+          { name: "התחל תהליך חדש", value: "__new__" },
+        ],
+      },
+    ]);
 
-      if (resume !== "__new__") {
-        outputDir = path.join(outputsBase, resume);
-        const progress = loadProgress(outputDir)!;
-        const maxCompleted = Math.max(...progress.completedSteps, 0);
-        startStep = maxCompleted + 1;
+    if (resume !== "__new__") {
+      outputDir = path.join(outputsBase, resume);
+      const progress = loadProgress(outputDir)!;
+      const maxCompleted = Math.max(...progress.completedSteps, 0);
+      startStep = maxCompleted + 1;
 
-        // טען נתונים קיימים
-        if (progress.completedSteps.includes(1)) {
-          answers = JSON.parse(loadFile(path.join(outputDir, "questionnaire.json")));
-        }
-        if (progress.completedSteps.includes(2)) {
-          strategyDoc = loadFile(path.join(outputDir, "strategy.txt"));
-        }
-        if (progress.completedSteps.includes(3)) {
-          const nichesData = JSON.parse(loadFile(path.join(outputDir, "niches.json")));
-          const selectedName = nichesData.selectedNicheName;
-          selectedNiche = nichesData.niches.find((n: Niche) => n.name === selectedName) ?? nichesData.niches[0];
-        }
-        if (progress.completedSteps.includes(4)) {
-          painAnalysis = loadFile(path.join(outputDir, "pains.txt"));
-        }
-
-        console.log(
-          chalk.green(`\n  ✓ ממשיך מ שלב ${startStep}/5\n`)
-        );
+      // טען נתונים קיימים
+      if (progress.completedSteps.includes(1)) {
+        answers = JSON.parse(loadFile(path.join(outputDir, "questionnaire.json")));
       }
+      if (progress.completedSteps.includes(2)) {
+        strategyDoc = loadFile(path.join(outputDir, "strategy.txt"));
+      }
+      if (progress.completedSteps.includes(3)) {
+        const nichesData = JSON.parse(loadFile(path.join(outputDir, "niches.json")));
+        const selectedName = nichesData.selectedNicheName;
+        selectedNiche =
+          nichesData.niches.find((n: Niche) => n.name === selectedName) ??
+          nichesData.niches[0];
+      }
+      if (progress.completedSteps.includes(4)) {
+        painAnalysis = loadFile(path.join(outputDir, "pains.txt"));
+      }
+
+      console.log(chalk.green(`\n  ✅ ממשיך משלב ${startStep}/5\n`));
     }
   }
 
@@ -377,13 +216,11 @@ async function main(): Promise<void> {
   } catch (error) {
     console.log(
       chalk.red.bold(
-        "\n  ✗ " + (error instanceof Error ? error.message : String(error))
+        "\n  ❌ " + (error instanceof Error ? error.message : String(error))
       )
     );
     console.log(
-      chalk.yellow(
-        "  💡 צור קובץ .env עם ANTHROPIC_API_KEY=sk-ant-...\n"
-      )
+      chalk.yellow("  💡 צור קובץ .env עם ANTHROPIC_API_KEY=sk-ant-...\n")
     );
     process.exit(1);
   }
@@ -393,18 +230,22 @@ async function main(): Promise<void> {
   // ═══════════════════════════════════════════
 
   if (startStep <= 1) {
+    printStepHeader(1, "שאלון תדר");
+
     try {
-      answers = await step1Questionnaire("");
-      // יצירת תיקיית output לפי שם המשתמש
-      const safeName = answers.userName.replace(/[^a-zA-Z0-9\u0590-\u05FF_-]/g, "_");
+      const collector = new QuestionnaireCollector();
+      answers = await collector.collect();
+
+      // יצירת תיקיית outputs/{userName}
+      const safeName = sanitizeFileName(answers.userName);
       outputDir = path.join(outputsBase, safeName);
       ensureDir(outputDir);
 
-      // העתק את הקובץ לתיקייה הנכונה
-      saveFile(
-        path.join(outputDir, "questionnaire.json"),
-        JSON.stringify(answers, null, 2)
-      );
+      // שמירת questionnaire.json
+      const filePath = path.join(outputDir, "questionnaire.json");
+      saveFile(filePath, JSON.stringify(answers, null, 2));
+      printSuccess("questionnaire.json");
+      printFileSaved(filePath);
 
       saveProgress(outputDir, {
         userName: answers.userName,
@@ -422,8 +263,23 @@ async function main(): Promise<void> {
   // ═══════════════════════════════════════════
 
   if (startStep <= 2) {
+    printStepHeader(2, "מסמך תדר וקהלים");
+
     try {
-      strategyDoc = await step2Strategy(outputDir, answers!, claude);
+      const prompt = buildStrategyPrompt(answers!);
+      const spinner = ora({
+        text: chalk.cyan("  🤖 מנתח תשובות עם Claude Opus..."),
+        spinner: "dots",
+      }).start();
+
+      strategyDoc = await claude.generateText(prompt, STRATEGY_SYSTEM_PROMPT);
+      spinner.stop();
+
+      const filePath = path.join(outputDir, "strategy.txt");
+      saveFile(filePath, strategyDoc);
+      printSuccess("strategy.txt");
+      printFileSaved(filePath);
+      showPreview(strategyDoc);
 
       const progress = loadProgress(outputDir)!;
       progress.completedSteps.push(2);
@@ -436,12 +292,65 @@ async function main(): Promise<void> {
   }
 
   // ═══════════════════════════════════════════
-  // שלב 3: מציאת נישות
+  // שלב 3: מציאת 3 נישות
   // ═══════════════════════════════════════════
 
   if (startStep <= 3) {
+    printStepHeader(3, "מציאת 3 נישות");
+
     try {
-      selectedNiche = await step3Niches(outputDir, strategyDoc, claude);
+      const prompt = buildNichesPrompt(strategyDoc);
+      const spinner = ora({
+        text: chalk.cyan("  🎯 מחפש 3 נישות מושלמות..."),
+        spinner: "dots",
+      }).start();
+
+      const rawResponse = await claude.generateText(prompt, NICHES_SYSTEM_PROMPT);
+      spinner.stop();
+
+      // פרסור JSON - חילוץ מתוך התגובה
+      const nichesResult = parseJSONFromText(rawResponse);
+
+      // שמור את כל הנישות
+      const filePath = path.join(outputDir, "niches.json");
+      saveFile(filePath, JSON.stringify(nichesResult, null, 2));
+      printFileSaved(filePath);
+
+      // הצג את 3 הנישות
+      console.log(chalk.cyan.bold("\n  3 הנישות שנמצאו:\n"));
+      nichesResult.niches.forEach((niche, idx) => {
+        console.log(
+          chalk.white.bold(`  ${idx + 1}. ${niche.name}`) +
+            chalk.yellow(` (ציון התאמה: ${niche.fit_score}/10)`)
+        );
+        console.log(chalk.gray(`     ${niche.description}`));
+        console.log();
+      });
+
+      if (nichesResult.recommendation) {
+        console.log(chalk.magenta(`  💡 המלצה: ${nichesResult.recommendation}\n`));
+      }
+
+      // בחירת נישה
+      const { selectedIndex } = await inquirer.prompt<{ selectedIndex: number }>([
+        {
+          type: "list",
+          name: "selectedIndex",
+          message: chalk.white.bold("באיזו נישה תרצה להתמקד?"),
+          choices: nichesResult.niches.map((niche, idx) => ({
+            name: `${niche.name} (ציון: ${niche.fit_score})`,
+            value: idx,
+          })),
+        },
+      ]);
+
+      selectedNiche = nichesResult.niches[selectedIndex];
+      console.log(chalk.green.bold(`\n  ✅ נבחרה נישה: ${selectedNiche.name}`));
+
+      // עדכן את הקובץ עם הבחירה
+      const nichesWithSelection = { ...nichesResult, selectedNicheName: selectedNiche.name };
+      saveFile(filePath, JSON.stringify(nichesWithSelection, null, 2));
+      printSuccess("niches.json");
 
       const progress = loadProgress(outputDir)!;
       progress.completedSteps.push(3);
@@ -458,8 +367,25 @@ async function main(): Promise<void> {
   // ═══════════════════════════════════════════
 
   if (startStep <= 4) {
+    printStepHeader(4, "ניתוח כאבים עמוקים");
+
     try {
-      painAnalysis = await step4Pains(outputDir, strategyDoc, selectedNiche!, claude);
+      console.log(chalk.gray(`  מנתח כאבים עבור נישה: ${selectedNiche!.name}\n`));
+
+      const prompt = buildPainsPrompt(strategyDoc, selectedNiche!);
+      const spinner = ora({
+        text: chalk.cyan("  🔍 מנתח כאבים עמוקים..."),
+        spinner: "dots",
+      }).start();
+
+      painAnalysis = await claude.generateText(prompt, PAINS_SYSTEM_PROMPT);
+      spinner.stop();
+
+      const filePath = path.join(outputDir, "pains.txt");
+      saveFile(filePath, painAnalysis);
+      printSuccess("pains.txt");
+      printFileSaved(filePath);
+      showPreview(painAnalysis);
 
       const progress = loadProgress(outputDir)!;
       progress.completedSteps.push(4);
@@ -476,8 +402,23 @@ async function main(): Promise<void> {
   // ═══════════════════════════════════════════
 
   if (startStep <= 5) {
+    printStepHeader(5, "יצירת 3 תסריטי וידאו");
+
     try {
-      await step5Scripts(outputDir, strategyDoc, painAnalysis, claude);
+      const prompt = buildScriptsPrompt(strategyDoc, painAnalysis);
+      const spinner = ora({
+        text: chalk.cyan("  ✍️ כותב 3 תסריטים..."),
+        spinner: "dots",
+      }).start();
+
+      const scripts = await claude.generateText(prompt, SCRIPTS_SYSTEM_PROMPT);
+      spinner.stop();
+
+      const filePath = path.join(outputDir, "scripts.txt");
+      saveFile(filePath, scripts);
+      printSuccess("scripts.txt");
+      printFileSaved(filePath);
+      showPreview(scripts);
 
       const progress = loadProgress(outputDir)!;
       progress.completedSteps.push(5);
@@ -500,7 +441,7 @@ async function main(): Promise<void> {
   console.log(
     chalk.green.bold("  ║") +
       chalk.white.bold(
-        "           ✓ התהליך הושלם בהצלחה!                  "
+        "        ✨ התהליך הושלם בהצלחה!                    "
       ) +
       chalk.green.bold("║")
   );
@@ -508,12 +449,13 @@ async function main(): Promise<void> {
     chalk.green.bold("  ╚══════════════════════════════════════════════════╝")
   );
   console.log();
-  console.log(chalk.white.bold("  הקבצים שנוצרו:"));
+
+  console.log(chalk.white.bold(`  📦 כל הקבצים ב: ${outputDir}/`));
   console.log();
 
   const files = [
     { name: "questionnaire.json", desc: "תשובות השאלון" },
-    { name: "strategy.txt", desc: "מסמך אסטרטגיה ותדר" },
+    { name: "strategy.txt", desc: "מסמך תדר וקהלים מורחב" },
     { name: "niches.json", desc: "3 נישות + הנישה הנבחרת" },
     { name: "pains.txt", desc: "ניתוח כאבים עמוקים" },
     { name: "scripts.txt", desc: "3 תסריטי וידאו" },
@@ -525,7 +467,7 @@ async function main(): Promise<void> {
       const size = fs.statSync(filePath).size;
       const sizeStr = size > 1024 ? `${(size / 1024).toFixed(1)}KB` : `${size}B`;
       console.log(
-        chalk.green("  ✓ ") +
+        chalk.green("  ✅ ") +
           chalk.white(file.name.padEnd(25)) +
           chalk.gray(file.desc) +
           chalk.yellow(` (${sizeStr})`)
@@ -533,8 +475,6 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log();
-  console.log(chalk.gray(`  📂 תיקייה: ${outputDir}`));
   console.log();
   console.log(
     chalk.cyan("  🚀 עכשיו יש לך הכל - תדר, נישה, כאבים, ותסריטים.")
@@ -544,6 +484,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(chalk.red("\n  שגיאה לא צפויה:"), error);
+  console.error(chalk.red("\n❌ שגיאה קריטית:"), error);
   process.exit(1);
 });
