@@ -184,14 +184,14 @@ async function step3Niches(
 
   // הצג את 3 הנישות
   console.log(chalk.cyan.bold("\n  3 הנישות שנמצאו:\n"));
-  for (const niche of nichesResult.niches) {
+  nichesResult.niches.forEach((niche, idx) => {
     console.log(
-      chalk.white.bold(`  ${niche.id}. ${niche.name}`) +
-        chalk.yellow(` (ציון התאמה: ${niche.fit_score}/100)`)
+      chalk.white.bold(`  ${idx + 1}. ${niche.name}`) +
+        chalk.yellow(` (ציון התאמה: ${niche.fit_score}/10)`)
     );
     console.log(chalk.gray(`     ${niche.description}`));
     console.log();
-  }
+  });
 
   if (nichesResult.recommendation) {
     console.log(chalk.magenta(`  💡 המלצה: ${nichesResult.recommendation}\n`));
@@ -214,7 +214,7 @@ async function step3Niches(
   printSuccess(`נבחרה נישה: ${selectedNiche.name}`);
 
   // עדכן את הקובץ עם הבחירה
-  const nichesWithSelection = { ...nichesResult, selectedNicheId: selectedNiche.id };
+  const nichesWithSelection = { ...nichesResult, selectedNicheName: selectedNiche.name };
   saveFile(filePath, JSON.stringify(nichesWithSelection, null, 2));
 
   return selectedNiche;
@@ -356,8 +356,8 @@ async function main(): Promise<void> {
         }
         if (progress.completedSteps.includes(3)) {
           const nichesData = JSON.parse(loadFile(path.join(outputDir, "niches.json")));
-          const selectedId = nichesData.selectedNicheId;
-          selectedNiche = nichesData.niches.find((n: Niche) => n.id === selectedId) ?? nichesData.niches[0];
+          const selectedName = nichesData.selectedNicheName;
+          selectedNiche = nichesData.niches.find((n: Niche) => n.name === selectedName) ?? nichesData.niches[0];
         }
         if (progress.completedSteps.includes(4)) {
           painAnalysis = loadFile(path.join(outputDir, "pains.txt"));

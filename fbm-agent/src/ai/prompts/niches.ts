@@ -18,26 +18,23 @@ export const NICHES_SYSTEM_PROMPT = `
 {
   "niches": [
     {
-      "id": 1,
       "name": "שם הנישה",
       "description": "תיאור מפורט של הנישה - מי הם, מה הם עושים, מה המאפיינים שלהם",
       "why_perfect_match": "הסבר מפורט למה הנישה הזו מתאימה בדיוק לתדר של המשתמש",
-      "market_size": "הערכת גודל השוק בישראל (קטן/בינוני/גדול) עם הסבר",
-      "pain_level": "רמת הכאב של הנישה (1-10) והסבר למה",
-      "accessibility": "כמה קל להגיע אליהם ואיפה הם נמצאים",
-      "fit_score": 95,
-      "example_clients": "2-3 דוגמאות קונקרטיות לסוגי לקוחות בנישה"
+      "fit_score": 9.2,
+      "examples": "2-3 דוגמאות קונקרטיות לסוגי לקוחות בנישה"
     }
   ],
   "recommendation": "המלצה מנומקת איזו נישה כדאי להתחיל איתה ולמה"
 }
 
 ## כללים:
-1. fit_score הוא מספר בין 70-100 שמייצג כמה הנישה מתאימה לתדר
+1. fit_score הוא מספר עשרוני בין 7.0-10.0 שמייצג כמה הנישה מתאימה לתדר (למשל: 8.5, 9.2)
 2. הנישות חייבות להיות ספציפיות - לא "עסקים קטנים" אלא "מאמנות כושר עצמאיות שעובדות מהבית"
 3. לפחות נישה אחת צריכה להיות "מפתיעה" - משהו שהמשתמש אולי לא חשב עליו
 4. סדר את הנישות מציון התאמה גבוה לנמוך
 5. ה-JSON חייב להיות תקין ובעברית
+6. אל תוסיף שדות שלא מופיעים בפורמט - רק name, description, why_perfect_match, fit_score, examples
 </OutputFormat>
 `;
 
@@ -68,20 +65,18 @@ ${strategyDocument}
    - הם מוכנים לשלם על פתרון
 
 3. החזר JSON תקין בלבד - בלי טקסט לפני או אחרי ה-JSON.
+4. השתמש בדיוק בשדות: name, description, why_perfect_match, fit_score, examples
+5. fit_score כמספר עשרוני (למשל: 8.5, 9.2) ולא כאחוז
 </Instructions>
 `;
 }
 
 export interface Niche {
-  id: number;
   name: string;
   description: string;
   why_perfect_match: string;
-  market_size: string;
-  pain_level: string;
-  accessibility: string;
   fit_score: number;
-  example_clients: string;
+  examples: string;
 }
 
 export interface NichesResult {
