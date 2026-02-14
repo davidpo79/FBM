@@ -333,19 +333,19 @@ async function main(): Promise<void> {
       }
 
       // בחירת נישה
-      const { selectedIndex } = await inquirer.prompt<{ selectedIndex: number }>([
+      const { selectedNicheName } = await inquirer.prompt<{ selectedNicheName: string }>([
         {
           type: "list",
-          name: "selectedIndex",
-          message: chalk.white.bold("באיזו נישה תרצה להתמקד?"),
-          choices: nichesResult.niches.map((niche, idx) => ({
-            name: `${niche.name} (ציון: ${niche.fit_score}/10) - ${niche.why_perfect_match.slice(0, 60)}...`,
-            value: idx,
+          name: "selectedNicheName",
+          message: chalk.white.bold("בחר נישה:"),
+          choices: nichesResult.niches.map((niche, index) => ({
+            name: `${index + 1}. ${niche.name} (ציון: ${niche.fit_score}/10)\n      💡 ${niche.why_perfect_match.substring(0, 100)}...`,
+            value: niche.name,
           })),
         },
       ]);
 
-      selectedNiche = nichesResult.niches[selectedIndex];
+      selectedNiche = nichesResult.niches.find((n) => n.name === selectedNicheName)!;
       console.log(chalk.green.bold(`\n  ✅ נבחרה נישה: ${selectedNiche.name}`));
 
       // עדכן את הקובץ עם הבחירה
