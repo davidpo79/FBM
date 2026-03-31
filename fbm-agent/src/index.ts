@@ -113,6 +113,40 @@ function printError(step: number, error: unknown): void {
 }
 
 // ═══════════════════════════════════════════
+// Admin Access
+// ═══════════════════════════════════════════
+
+function getAdminEmails(): string[] {
+  const envEmails = process.env.ADMIN_EMAILS ?? "dudi79@gmail.com";
+  return envEmails.split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+}
+
+async function checkAdminAccess(): Promise<void> {
+  const adminEmails = getAdminEmails();
+
+  const { email } = await inquirer.prompt<{ email: string }>([
+    {
+      type: "input",
+      name: "email",
+      message: chalk.white.bold("הכנס את כתובת המייל שלך:"),
+      validate: (input: string) => {
+        if (!input.trim()) return "חובה להכניס כתובת מייל";
+        if (!input.includes("@")) return "כתובת מייל לא תקינה";
+        return true;
+      },
+    },
+  ]);
+
+  if (!adminEmails.includes(email.trim().toLowerCase())) {
+    console.log(chalk.red.bold("\n  ❌ אין גישה - המייל שלך אינו מורשה להשתמש בכלי זה."));
+    console.log(chalk.yellow(`  📧 מייל שהוזן: ${email.trim()}\n`));
+    process.exit(1);
+  }
+
+  console.log(chalk.green.bold(`\n  ✅ גישה אושרה: ${email.trim()}\n`));
+}
+
+// ═══════════════════════════════════════════
 // Main
 // ═══════════════════════════════════════════
 
@@ -140,6 +174,9 @@ async function main(): Promise<void> {
     chalk.cyan.bold("  ╚══════════════════════════════════════════════════╝")
   );
   console.log();
+
+  // ── בדיקת גישת אדמין ──
+  await checkAdminAccess();
 
   // ── בדוק אם יש progress קיים ──
   const outputsBase = path.join(process.cwd(), "outputs");
